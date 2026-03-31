@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AssetSync — Inventory Reconciliation Tool</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --surface: #111820;
+    --surface2: #182030;
+    --border: #1e2d40;
+    --accent: #00d4ff;
+    --accent2: #ff6b35;
+    --warn: #ffc93c;
+    --ok: #36d399;
+    --text: #d4e5f7;
+    --muted: #5a7a99;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.35;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 0 24px 60px; }
+
+  /* Header */
+  header {
+    padding: 40px 0 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .logo-icon {
+    width: 44px; height: 44px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono);
+    font-weight: 600;
+    color: var(--bg);
+    font-size: 16px;
+    letter-spacing: -1px;
+    flex-shrink: 0;
+  }
+  .logo-text h1 {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: -0.5px;
+  }
+  .logo-text p {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+    margin-top: 2px;
+  }
+  .badge {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+
+  /* Upload Section */
+  .upload-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 24px;
+  }
+  @media(max-width:640px){ .upload-grid { grid-template-columns: 1fr; } }
+
+  .upload-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    transition: border-color 0.2s;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .upload-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+  }
+  .upload-card.expected::before { background: var(--accent); }
+  .upload-card.actual::before { background: var(--accent2); }
+  .upload-card:hover { border-color: var(--accent); }
+  .upload-card.has-file { border-color: var(--ok); }
+  .upload-card.has-file:hover { border-color: var(--ok); }
+
+  .card-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+  .upload-card.expected .card-label { color: var(--accent); }
+  .upload-card.actual .card-label { color: var(--accent2); }
+
+  .card-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 6px;
+  }
+  .card-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+  .upload-area {
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.2s;
+  }
+  .upload-area:hover { border-color: var(--accent); background: rgba(0,212,255,0.03); }
+  .upload-area.dragover { border-color: var(--accent); background: rgba(0,212,255,0.06); }
+  .upload-icon { font-size: 28px; margin-bottom: 8px; }
+  .upload-hint { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+  .upload-hint span { color: var(--accent); }
+  input[type=file] { display: none; }
+
+  .file-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .file-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex-shrink: 0; }
+  .file-status span { color: var(--ok); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Sample data */
+  .sample-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: all 0.15s;
+    display: block;
+    width: 100%;
+    text-align: center;
+  }
+  .sample-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* Analyze button */
+  .analyze-btn {
+    width: 100%;
+    padding: 16px;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 10px;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 32px;
+  }
+  .analyze-btn:hover:not(:disabled) { background: #33ddff; transform: translateY(-1px); }
+  .analyze-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .analyze-btn .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid var(--bg);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Stats row */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 28px;
+    animation: fadeUp 0.4s ease;
+  }
+  @media(max-width:640px){ .stats-row { grid-template-columns: repeat(2,1fr); } }
+  @keyframes fadeUp { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform: translateY(0); } }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+  }
+  .stat-label { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 8px; }
+  .stat-value { font-family: var(--mono); font-size: 28px; font-weight: 600; }
+  .stat-value.ok { color: var(--ok); }
+  .stat-value.warn { color: var(--warn); }
+  .stat-value.err { color: var(--accent2); }
+  .stat-value.info { color: var(--accent); }
+
+  /* Table */
+  .table-section { animation: fadeUp 0.5s ease 0.1s both; }
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .section-title {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .filter-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .filter-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .filter-btn:hover, .filter-btn.active { color: #fff; border-color: var(--accent); background: rgba(0,212,255,0.08); }
+  .filter-btn.active { color: var(--accent); }
+
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 28px;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: var(--surface2);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: var(--muted);
+    text-align: left;
+    padding: 12px 16px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  tbody td { padding: 12px 16px; font-size: 13px; }
+  td.mono { font-family: var(--mono); font-size: 12px; }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+  .status-badge.match { background: rgba(54,211,153,0.12); color: var(--ok); }
+  .status-badge.surplus { background: rgba(255,201,60,0.12); color: var(--warn); }
+  .status-badge.shortage { background: rgba(255,107,53,0.15); color: var(--accent2); }
+  .status-badge.missing { background: rgba(255,107,53,0.2); color: var(--accent2); }
+  .status-badge.new { background: rgba(0,212,255,0.1); color: var(--accent); }
+  .status-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+  .delta { font-family: var(--mono); font-size: 12px; font-weight: 600; }
+  .delta.pos { color: var(--warn); }
+  .delta.neg { color: var(--accent2); }
+  .delta.zero { color: var(--ok); }
+
+  /* AI Report */
+  .ai-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 12px;
+    padding: 28px;
+    animation: fadeUp 0.5s ease 0.2s both;
+    margin-bottom: 28px;
+  }
+  .ai-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+  }
+  .ai-icon {
+    width: 32px; height: 32px;
+    background: rgba(0,212,255,0.1);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+  .ai-label { font-family: var(--mono); font-size: 12px; letter-spacing: 2px; color: var(--accent); text-transform: uppercase; }
+  .ai-body { font-size: 14px; line-height: 1.8; color: var(--text); white-space: pre-wrap; }
+  .ai-body p { margin-bottom: 10px; }
+  .ai-cursor { display: inline-block; width: 8px; height: 14px; background: var(--accent); animation: blink 1s step-end infinite; vertical-align: text-bottom; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* Empty state */
+  .empty { text-align: center; padding: 60px 20px; color: var(--muted); }
+  .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.4; }
+  .empty p { font-size: 14px; }
+
+  /* API key */
+  .api-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    align-items: center;
+  }
+  .api-row label { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; letter-spacing: 1px; }
+  .api-row input {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .api-row input:focus { border-color: var(--accent); }
+
+  /* download */
+  .dl-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 6px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .dl-btn:hover { color: var(--ok); border-color: var(--ok); }
+
+  #results { display: none; }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">AS</div>
+      <div class="logo-text">
+        <h1>AssetSync</h1>
+        <p>// inventory reconciliation engine</p>
+      </div>
+    </div>
+    <div class="badge">AI-POWERED</div>
+  </header>
+
+  <!-- API Key -->
+  <div class="api-row">
+    <label>API KEY //</label>
+    <input type="password" id="apiKey" placeholder="sk-ant-api03-..." />
+  </div>
+
+  <!-- Upload Cards -->
+  <div class="upload-grid">
+    <!-- Expected -->
+    <div class="upload-card expected" onclick="document.getElementById('fileExpected').click()">
+      <div class="card-label">// File 01</div>
+      <div class="card-title">Expected Inventory</div>
+      <div class="card-sub">Your system-of-record data — what <em>should</em> be on hand.</div>
+      <div class="upload-area" id="dropExpected">
+        <div class="upload-icon">📋</div>
+        <div class="upload-hint">Drop CSV here or <span>browse</span></div>
+      </div>
+      <div class="file-status" id="statusExpected" style="display:none">
+        <div class="dot"></div><span id="nameExpected"></span>
+      </div>
+      <button class="sample-btn" onclick="event.stopPropagation(); loadSample('expected')">↓ Load sample data</button>
+    </div>
+    <input type="file" id="fileExpected" accept=".csv" onchange="handleFile(this,'expected')"/>
+
+    <!-- Actual -->
+    <div class="upload-card actual" onclick="document.getElementById('fileActual').click()">
+      <div class="card-label">// File 02</div>
+      <div class="card-title">Actual Inventory</div>
+      <div class="card-sub">Your physical count or scan data — what <em>actually</em> exists.</div>
+      <div class="upload-area" id="dropActual">
+        <div class="upload-icon">📦</div>
+        <div class="upload-hint">Drop CSV here or <span>browse</span></div>
+      </div>
+      <div class="file-status" id="statusActual" style="display:none">
+        <div class="dot"></div><span id="nameActual"></span>
+      </div>
+      <button class="sample-btn" onclick="event.stopPropagation(); loadSample('actual')">↓ Load sample data</button>
+    </div>
+    <input type="file" id="fileActual" accept=".csv" onchange="handleFile(this,'actual')"/>
+  </div>
+
+  <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis()" disabled>
+    <span id="btnText">⚡ RUN RECONCILIATION</span>
+  </button>
+
+  <!-- Results -->
+  <div id="results">
+    <div class="stats-row" id="statsRow"></div>
+
+    <div class="table-section">
+      <div class="section-header">
+        <div class="section-title">// Reconciliation Table</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div class="filter-btns" id="filterBtns">
+            <button class="filter-btn active" onclick="filterTable('all',this)">All</button>
+            <button class="filter-btn" onclick="filterTable('shortage',this)">Shortage</button>
+            <button class="filter-btn" onclick="filterTable('surplus',this)">Surplus</button>
+            <button class="filter-btn" onclick="filterTable('missing',this)">Missing</button>
+            <button class="filter-btn" onclick="filterTable('new',this)">New</button>
+          </div>
+          <button class="dl-btn" onclick="downloadCSV()">↓ Export</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Asset ID</th>
+              <th>Name</th>
+              <th>Category</th>
+              <th>Expected</th>
+              <th>Actual</th>
+              <th>Delta</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="ai-section">
+      <div class="ai-header">
+        <div class="ai-icon">🤖</div>
+        <div class="ai-label">AI Analysis Report</div>
+      </div>
+      <div class="ai-body" id="aiReport"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let dataExpected = null;
+let dataActual = null;
+let reconciled = [];
+let currentFilter = 'all';
+
+// ── Sample Data ──────────────────────────────────────────────────
+const SAMPLE_EXPECTED = `asset_id,name,category,quantity
+A001,Fare Card Reader,Ticketing,42
+A002,Turnstile Gate,Access Control,18
+A003,PRESTO Kiosk,Self-Service,12
+A004,Security Camera,Surveillance,88
+A005,Network Switch,IT Infrastructure,24
+A006,UPS Battery Unit,Power,15
+A007,Platform Display,Signage,30
+A008,Validator Terminal,Ticketing,56
+A009,Emergency Phone,Safety,22
+A010,Bench Unit,Furniture,64`;
+
+const SAMPLE_ACTUAL = `asset_id,name,category,quantity
+A001,Fare Card Reader,Ticketing,39
+A002,Turnstile Gate,Access Control,18
+A003,PRESTO Kiosk,Self-Service,14
+A004,Security Camera,Surveillance,82
+A005,Network Switch,IT Infrastructure,24
+A006,UPS Battery Unit,Power,11
+A007,Platform Display,Signage,30
+A008,Validator Terminal,Ticketing,61
+A009,Emergency Phone,Safety,19
+A010,Bench Unit,Furniture,64
+A011,Charging Station,Amenities,8`;
+
+// ── CSV Parser ────────────────────────────────────────────────────
+function parseCSV(text) {
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/\s+/g,'_'));
+  return lines.slice(1).map(line => {
+    const vals = line.split(',').map(v => v.trim());
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
+    return obj;
+  });
+}
+
+function loadSample(type) {
+  const text = type === 'expected' ? SAMPLE_EXPECTED : SAMPLE_ACTUAL;
+  const data = parseCSV(text);
+  if (type === 'expected') {
+    dataExpected = data;
+    document.getElementById('nameExpected').textContent = 'sample_expected.csv (' + data.length + ' rows)';
+    document.getElementById('statusExpected').style.display = 'flex';
+    document.querySelector('.upload-card.expected').classList.add('has-file');
+  } else {
+    dataActual = data;
+    document.getElementById('nameActual').textContent = 'sample_actual.csv (' + data.length + ' rows)';
+    document.getElementById('statusActual').style.display = 'flex';
+    document.querySelector('.upload-card.actual').classList.add('has-file');
+  }
+  checkReady();
+}
+
+function handleFile(input, type) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const data = parseCSV(e.target.result);
+    if (type === 'expected') {
+      dataExpected = data;
+      document.getElementById('nameExpected').textContent = file.name + ' (' + data.length + ' rows)';
+      document.getElementById('statusExpected').style.display = 'flex';
+      document.querySelector('.upload-card.expected').classList.add('has-file');
+    } else {
+      dataActual = data;
+      document.getElementById('nameActual').textContent = file.name + ' (' + data.length + ' rows)';
+      document.getElementById('statusActual').style.display = 'flex';
+      document.querySelector('.upload-card.actual').classList.add('has-file');
+    }
+    checkReady();
+  };
+  reader.readAsText(file);
+}
+
+function checkReady() {
+  document.getElementById('analyzeBtn').disabled = !(dataExpected && dataActual);
+}
+
+// ── Drag-and-drop ──────────────────────────────────────────────────
+['Expected','Actual'].forEach(type => {
+  const drop = document.getElementById('drop' + type);
+  drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+  drop.addEventListener('drop', e => {
+    e.preventDefault();
+    drop.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const fakeInput = { files: [file] };
+      handleFile(fakeInput, type.toLowerCase());
+    }
+  });
+});
+
+// ── Reconcile ─────────────────────────────────────────────────────
+function reconcile() {
+  const expected = {};
+  dataExpected.forEach(row => {
+    const id = row.asset_id || row.id || row.asset_id;
+    expected[id] = row;
+  });
+  const actual = {};
+  dataActual.forEach(row => {
+    const id = row.asset_id || row.id;
+    actual[id] = row;
+  });
+
+  const allIds = new Set([...Object.keys(expected), ...Object.keys(actual)]);
+  reconciled = [];
+
+  allIds.forEach(id => {
+    const exp = expected[id];
+    const act = actual[id];
+    const expQty = exp ? parseInt(exp.quantity || 0) : 0;
+    const actQty = act ? parseInt(act.quantity || 0) : 0;
+    const delta = actQty - expQty;
+    let status;
+    if (!exp) status = 'new';
+    else if (!act) status = 'missing';
+    else if (delta === 0) status = 'match';
+    else if (delta > 0) status = 'surplus';
+    else status = 'shortage';
+
+    reconciled.push({
+      id,
+      name: (exp || act).name || '—',
+      category: (exp || act).category || '—',
+      expected: expQty,
+      actual: actQty,
+      delta,
+      status
+    });
+  });
+
+  reconciled.sort((a,b) => {
+    const order = {missing:0,shortage:1,surplus:2,new:3,match:4};
+    return order[a.status] - order[b.status];
+  });
+  return reconciled;
+}
+
+// ── Render Table ──────────────────────────────────────────────────
+function renderTable(filter='all') {
+  currentFilter = filter;
+  const body = document.getElementById('tableBody');
+  const rows = filter === 'all' ? reconciled : reconciled.filter(r => r.status === filter);
+  if (rows.length === 0) {
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--muted);font-family:var(--mono);font-size:13px;">No items match this filter</td></tr>';
+    return;
+  }
+  body.innerHTML = rows.map(r => {
+    const deltaStr = r.delta === 0 ? '±0' : (r.delta > 0 ? '+' + r.delta : r.delta);
+    const deltaClass = r.delta > 0 ? 'pos' : r.delta < 0 ? 'neg' : 'zero';
+    const badges = {
+      match: '<span class="status-badge match">MATCH</span>',
+      surplus: '<span class="status-badge surplus">SURPLUS</span>',
+      shortage: '<span class="status-badge shortage">SHORTAGE</span>',
+      missing: '<span class="status-badge missing">MISSING</span>',
+      new: '<span class="status-badge new">NEW ITEM</span>'
+    };
+    return `<tr>
+      <td class="mono">${r.id}</td>
+      <td>${r.name}</td>
+      <td style="color:var(--muted);font-size:12px">${r.category}</td>
+      <td class="mono">${r.expected > 0 ? r.expected : '—'}</td>
+      <td class="mono">${r.actual > 0 ? r.actual : '—'}</td>
+      <td><span class="delta ${deltaClass}">${deltaStr}</span></td>
+      <td>${badges[r.status]}</td>
+    </tr>`;
+  }).join('');
+}
+
+function filterTable(f, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderTable(f);
+}
+
+// ── Stats ─────────────────────────────────────────────────────────
+function renderStats() {
+  const total = reconciled.length;
+  const matches = reconciled.filter(r => r.status === 'match').length;
+  const issues = reconciled.filter(r => r.status !== 'match').length;
+  const critical = reconciled.filter(r => r.status === 'missing' || r.status === 'shortage').length;
+  const accuracy = Math.round((matches / total) * 100);
+
+  document.getElementById('statsRow').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Total Assets</div>
+      <div class="stat-value info">${total}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Accuracy Rate</div>
+      <div class="stat-value ${accuracy >= 90 ? 'ok' : accuracy >= 70 ? 'warn' : 'err'}">${accuracy}%</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Discrepancies</div>
+      <div class="stat-value ${issues === 0 ? 'ok' : 'warn'}">${issues}</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Critical Items</div>
+      <div class="stat-value ${critical === 0 ? 'ok' : 'err'}">${critical}</div>
+    </div>
+  `;
+}
+
+// ── AI Report via Claude API ──────────────────────────────────────
+async function fetchAIReport() {
+  const apiKey = document.getElementById('apiKey').value.trim();
+  const reportDiv = document.getElementById('aiReport');
+
+  const summary = reconciled.map(r =>
+    `${r.id} (${r.name}): expected=${r.expected}, actual=${r.actual}, delta=${r.delta > 0 ? '+'+r.delta : r.delta}, status=${r.status}`
+  ).join('\n');
+
+  const prompt = `You are an asset management analyst. Analyze this inventory reconciliation data and produce a concise professional report.
+
+DATA:
+${summary}
+
+Provide:
+1. EXECUTIVE SUMMARY (2-3 sentences on overall inventory health)
+2. CRITICAL FINDINGS (bullet the most urgent discrepancies)
+3. ROOT CAUSE HYPOTHESES (brief likely reasons for the discrepancies)
+4. RECOMMENDED ACTIONS (prioritized, actionable steps)
+5. ISO 55000 ALIGNMENT NOTE (one sentence on asset lifecycle implications)
+
+Keep it professional, data-driven, and under 350 words. Use plain text, no markdown headers.`;
+
+  if (!apiKey) {
+    reportDiv.innerHTML = `<span style="color:var(--muted);font-family:var(--mono);font-size:13px;">// Enter your Anthropic API key above to generate the AI analysis report.</span>`;
+    return;
+  }
+
+  reportDiv.innerHTML = '<span class="ai-cursor"></span>';
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        stream: true,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    reportDiv.innerHTML = '';
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') break;
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+              reportDiv.textContent += parsed.delta.text;
+            }
+          } catch {}
+        }
+      }
+    }
+  } catch (err) {
+    reportDiv.innerHTML = `<span style="color:var(--accent2);">Error calling API: ${err.message}. Check your API key and try again.</span>`;
+  }
+}
+
+// ── Export CSV ────────────────────────────────────────────────────
+function downloadCSV() {
+  const header = 'Asset ID,Name,Category,Expected,Actual,Delta,Status';
+  const rows = reconciled.map(r =>
+    `${r.id},${r.name},${r.category},${r.expected},${r.actual},${r.delta},${r.status}`
+  );
+  const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'reconciliation_report_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+
+// ── Main Run ──────────────────────────────────────────────────────
+async function runAnalysis() {
+  const btn = document.getElementById('analyzeBtn');
+  const btnText = document.getElementById('btnText');
+  btn.disabled = true;
+  btnText.innerHTML = '<span class="spinner"></span> ANALYZING...';
+
+  await new Promise(r => setTimeout(r, 300));
+
+  reconcile();
+  renderStats();
+  renderTable();
+
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  btnText.textContent = '✓ RECONCILIATION COMPLETE';
+
+  await fetchAIReport();
+}
+</script>
+</body>
+</html>
